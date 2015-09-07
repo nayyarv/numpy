@@ -1363,7 +1363,8 @@ class TestHistogramOptimBinNums(TestCase):
     def test_simple_weighted(self):
         """
         Straightforward testing with a mixture of linspace data (for consistency).
-        Weights = np.ones(testlen) so we should have identical results to previous test.
+        In this situation the datasize is halved but the weights are doubled.
+        Hence the values should be the same as `test_simple`
 
         All test values have been precomputed and the values shouldn't change
         """
@@ -1374,10 +1375,11 @@ class TestHistogramOptimBinNums(TestCase):
 
         for testlen, expectedResults in basic_test.items():
             # create some sort of non uniform data to test with (2 peak uniform mixture)
+            testlen/=2
             x1 = np.linspace(-10, -1, testlen/5 * 2)
             x2 = np.linspace(1,10, testlen/5 * 3)
             x = np.hstack((x1, x2))
-            weights = np.ones(testlen)
+            weights = np.ones(testlen)*2
             for estimator, numbins in expectedResults.items():
                 a, b = np.histogram(x, estimator, weights=weights)
                 assert_equal(len(a), numbins,
