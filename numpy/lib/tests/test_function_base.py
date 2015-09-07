@@ -1326,6 +1326,9 @@ class TestHistogramOptimBinNums(TestCase):
         for estimator in check_list:
             assert_raises(ValueError, histogram, [1, 2, 3], estimator)
 
+        # check fd with weights throws an error
+        assert_raises(TypeError, histogram, [1,2,3], 'FD', weights=[1,2,3])
+
     def test_novariance(self):
         """
         Check that methods handle no variance in data
@@ -1356,6 +1359,52 @@ class TestHistogramOptimBinNums(TestCase):
         for estimator, numbins in outlier_resultdict.items():
             a, b = np.histogram(outlier_dataset, estimator)
             assert_equal(len(a), numbins)
+
+    def test_simple_weighted(self):
+        """
+        Straightforward testing with a mixture of linspace data (for consistency).
+        Weights = np.ones(testlen) so we should have identical results to previous test.
+
+        All test values have been precomputed and the values shouldn't change
+        """
+        # some basic sanity checking, with some fixed data. Checking for the correct number of bins
+        basic_test = {50:   {'scott': 4,  'rice': 8,  'sturges': 7,  'auto': 7},
+                      500:  {'scott': 8,  'rice': 16, 'sturges': 10, 'auto': 10},
+                      5000: {'scott': 17, 'rice': 35, 'sturges': 14, 'auto': 17}}
+
+        for testlen, expectedResults in basic_test.items():
+            # create some sort of non uniform data to test with (2 peak uniform mixture)
+            x1 = np.linspace(-10, -1, testlen/5 * 2)
+            x2 = np.linspace(1,10, testlen/5 * 3)
+            x = np.hstack((x1, x2))
+            weights = np.ones(testlen)
+            for estimator, numbins in expectedResults.items():
+                a, b = np.histogram(x, estimator, weights=weights)
+                assert_equal(len(a), numbins,
+                             err_msg="For the {0} estimator with datasize of {1} ".format(estimator, testlen))
+
+    def test_simple_range(self):
+        """
+        Straightforward testing with a mixture of linspace data (for consistency).
+        Adding in a 3rd mixture that will then be completely ignored.
+
+        All test values have been precomputed and the values shouldn't change
+        """
+        # some basic sanity checking, with some fixed data. Checking for the correct number of bins
+        basic_test = {50:   {'fd': 4,  'scott': 4,  'rice': 8,  'sturges': 7,  'auto': 7},
+                      500:  {'fd': 8,  'scott': 8,  'rice': 16, 'sturges': 10, 'auto': 10},
+                      5000: {'fd': 17, 'scott': 17, 'rice': 35, 'sturges': 14, 'auto': 17}}
+
+        for testlen, expectedResults in basic_test.items():
+            # create some sort of non uniform data to test with (2 peak uniform mixture)
+            x1 = np.linspace(-10, -1, testlen/5 * 2)
+            x2 = np.linspace(1,10, testlen/5 * 3)
+            x3 = np.linspace(-100, -50, testlen)
+            x = np.hstack((x1, x2, x3))
+            for estimator, numbins in expectedResults.items():
+                a, b = np.histogram(x, estimator, range = (-20, 20))
+                assert_equal(len(a), numbins,
+                             err_msg="For the {0} estimator with datasize of {1} ".format(estimator, testlen))
 
 
 class TestHistogramdd(TestCase):

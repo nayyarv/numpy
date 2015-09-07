@@ -80,10 +80,21 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
     """
     A helper function to be called from histogram to deal with estimating optimal number of bins
 
+    a: np.array
+        The data with which to estimate the number of bins
+
     estimator: str
         If estimator is one of ['auto', 'fd', 'scott', 'rice', 'sturges'] this function
         will choose the appropriate estimator and return it's estimate for the optimal
         number of bins.
+
+    data_range: tuple (min, max)
+        What range should the data to be binned be restricted to
+
+    weights: np.array
+        Must be of type float or int and can be interpreted as data counts or probabilities.
+        We use the minimum of a.size or weights.sum() as the datasize in the estimators
+
     """
     assert isinstance(estimator, basestring)
     # private function should not be called otherwise
@@ -102,14 +113,13 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
                 data_weights = data_weights[keep]
 
     if data_weights is not None:
-        if data_weights.dtype != int or data_weights.dtype != float:
+        if data_weights.dtype != int and data_weights.dtype != float:
             raise TypeError("Unsupported weight type {} passed into "
                             "histogram automatic bin estimator".format(data_weights.dtype))
         if data_weights.sum() < a.size:
             # we assume that weights represents counts. In the case that weights
             # represents a probability (i.e. weights.sum()<=1),
             # we scale the weights to represent a count where weights.sum = a.size
-
             data_weights = data_weights * (a.size/data_weights.sum())
 
     def sturges(x, weights=None):
@@ -140,7 +150,15 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         inversely proportional to the cube root of data size (asymptotically optimal)
 
         """
-        h = 3.5 * x.std() * x.size ** (-1.0 / 3)
+        if weights is None:
+            std = a.std()
+            data_size = x.size
+        else:
+            weighted_mean = np.average(a, weights=weights)
+            std = np.sqrt(np.average((a-weighted_mean)**2, weights=weights))
+            data_size = weights.sum()
+
+        h = 3.5 * std * data_size ** (-1.0 / 3)
         if h > 0:
             return np.ceil(x.ptp() / h)
         return 1
@@ -154,10 +172,13 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
 
         If the IQR is 0, we return 1 for the number of bins.
         Binwidth is inversely proportional to the cube root of data size (asymptotically optimal)
-        """
-        if weights is not None: raise TypeError("Freedman Diaconis rule does not accept weights as an argument")
-        iqr = np.subtract(*np.percentile(x, [75, 25]))
 
+        Does not support weights - will throw an TypeError if weights is not None
+        """
+        if weights is not None:
+            raise TypeError("Freedman Diaconis rule does not accept weights as an argument")
+
+        iqr = np.subtract(*np.percentile(x, [75, 25]))
         if iqr > 0:
             h = (2 * iqr * x.size ** (-1.0 / 3))
             return np.ceil(x.ptp() / h)
@@ -182,7 +203,7 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         raise ValueError("{0} not a valid method for `bins`".format(estimator))
     else:
         # these methods return floats, np.histogram requires an int
-        return int(estimator_func(a))
+        return int(estimator_func(a, data_weights))
 
 
 def histogram(a, bins=10, range=None, normed=False, weights=None,
@@ -204,14 +225,17 @@ def histogram(a, bins=10, range=None, normed=False, weights=None,
 
         If `bins` is a string from the list below, `histogram` will use the method
         chosen to calculate the optimal number of bins (see Notes for more detail
-        on the estimators). For visualisation, we suggest using the 'auto' option.
+        on the estimators). This option is compatible with `range` and `weights`,
+        given that weights represents either a count or a probability. For visualisation,
+        we suggest using the 'auto' option.
 
         'auto'
-            Maximum of the 'sturges' and 'fd' estimators. Provides good all round performance
+            Maximum of the 'sturges' and 'fd' estimators. Uses 'scott' instead of 'fd'
+            for weighted data. Provides good all round performance
 
         'fd' (Freedman Diaconis Estimator)
             Robust (resilient to outliers) estimator that takes into account data
-            variability and data size .
+            variability and data size. Cannot be used in conjunction with `weights`.
 
         'scott'
             Less robust estimator that that takes into account data
