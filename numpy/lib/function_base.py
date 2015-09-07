@@ -76,7 +76,7 @@ def iterable(y):
     return 1
 
 
-def _hist_optim_numbins_estimator(a, estimator):
+def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=None):
     """
     A helper function to be called from histogram to deal with estimating optimal number of bins
 
@@ -91,16 +91,38 @@ def _hist_optim_numbins_estimator(a, estimator):
     if a.size == 0:
         return 1
 
-    def sturges(x):
+    # Filter the data so we stay in the required range
+    if data_range is not None:
+        mn, mx = data_range
+        keep = (a >= mn)
+        keep &= (a <= mx)
+        if not np.logical_and.reduce(keep):
+            a = a[keep]
+            if data_weights is not None:
+                data_weights = data_weights[keep]
+
+    if data_weights is not None:
+        if data_weights.dtype != int or data_weights.dtype != float:
+            raise TypeError("Unsupported weight type {} passed into "
+                            "histogram automatic bin estimator".format(data_weights.dtype))
+        if data_weights.sum() < a.size:
+            # we assume that weights represents counts. In the case that weights
+            # represents a probability (i.e. weights.sum()<=1),
+            # we scale the weights to represent a count where weights.sum = a.size
+
+            data_weights = data_weights * (a.size/data_weights.sum())
+
+    def sturges(x, weights=None):
         """
         Sturges Estimator
         A very simplistic estimator based on the assumption of normality of the data
         Poor performance for non-normal data, especially obvious for large X.
         Depends only on size of the data.
         """
-        return np.ceil(np.log2(x.size)) + 1
+        data_size = weights.sum() if weights is not None else x.size
+        return np.ceil(np.log2(data_size)) + 1
 
-    def rice(x):
+    def rice(x, weights=None):
         """
         Rice Estimator
         Another simple estimator, with no normality assumption.
@@ -108,9 +130,10 @@ def _hist_optim_numbins_estimator(a, estimator):
         The number of bins is proportional to the cube root of data size (asymptotically optimal)
         Depends only on size of the data
         """
-        return np.ceil(2 * x.size ** (1.0 / 3))
+        data_size = weights.sum() if weights is not None else x.size
+        return np.ceil(2 * data_size ** (1.0 / 3))
 
-    def scott(x):
+    def scott(x, weights=None):
         """
         Scott Estimator
         The binwidth is proportional to the standard deviation of the data and
@@ -122,7 +145,7 @@ def _hist_optim_numbins_estimator(a, estimator):
             return np.ceil(x.ptp() / h)
         return 1
 
-    def fd(x):
+    def fd(x, weights=None):
         """
         Freedman Diaconis rule using Inter Quartile Range (IQR) for binwidth
         Considered a variation of the Scott rule with more robustness as the IQR
@@ -132,6 +155,7 @@ def _hist_optim_numbins_estimator(a, estimator):
         If the IQR is 0, we return 1 for the number of bins.
         Binwidth is inversely proportional to the cube root of data size (asymptotically optimal)
         """
+        if weights is not None: raise TypeError("Freedman Diaconis rule does not accept weights as an argument")
         iqr = np.subtract(*np.percentile(x, [75, 25]))
 
         if iqr > 0:
@@ -141,14 +165,14 @@ def _hist_optim_numbins_estimator(a, estimator):
         # If iqr is 0, default number of bins is 1
         return 1
 
-    def auto(x):
+    def auto(x, weights=None):
         """
         The FD estimator is usually the most robust method, but it tends to be too small
         for small X. The Sturges estimator is quite good for small (<1000) datasets and is
         the default in R.
         This method gives good off the shelf behaviour.
         """
-        return max(fd(x), sturges(x))
+        return max(scott(x, weights), sturges(x, weights)) if weights is not None else max(fd(x), sturges(x))
 
     optimal_numbins_methods = {'sturges': sturges, 'rice': rice, 'scott': scott,
                                'fd': fd, 'auto': auto}
@@ -340,7 +364,7 @@ def histogram(a, bins=10, range=None, normed=False, weights=None,
                 'max must be larger than min in range parameter.')
 
     if isinstance(bins, basestring):
-        bins = _hist_optim_numbins_estimator(a, bins)
+        bins = _hist_optim_numbins_estimator(a, bins, range, weights)
         # if `bins` is a string for an automatic method,
         # this will replace it with the number of bins calculated
 
