@@ -1375,11 +1375,11 @@ class TestHistogramOptimBinNums(TestCase):
 
         for testlen, expectedResults in basic_test.items():
             # create some sort of non uniform data to test with (2 peak uniform mixture)
-            testlen/=2
+            testlen //= 2
             x1 = np.linspace(-10, -1, testlen/5 * 2)
-            x2 = np.linspace(1,10, testlen/5 * 3)
+            x2 = np.linspace(1, 10, testlen/5 * 3)
             x = np.hstack((x1, x2))
-            weights = np.ones(testlen)*2
+            weights = np.ones(testlen) * 2
             for estimator, numbins in expectedResults.items():
                 a, b = np.histogram(x, estimator, weights=weights)
                 assert_equal(len(a), numbins,
@@ -1400,7 +1400,7 @@ class TestHistogramOptimBinNums(TestCase):
         for testlen, expectedResults in basic_test.items():
             # create some sort of non uniform data to test with (2 peak uniform mixture)
             x1 = np.linspace(-10, -1, testlen/5 * 2)
-            x2 = np.linspace(1,10, testlen/5 * 3)
+            x2 = np.linspace(1, 10, testlen/5 * 3)
             x3 = np.linspace(-100, -50, testlen)
             x = np.hstack((x1, x2, x3))
             for estimator, numbins in expectedResults.items():
