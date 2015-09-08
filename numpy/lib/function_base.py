@@ -112,15 +112,25 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
             if data_weights is not None:
                 data_weights = data_weights[keep]
 
-    if data_weights is not None:
-        if data_weights.dtype != int and data_weights.dtype != float:
-            raise TypeError("Unsupported weight type {} passed into "
-                            "histogram automatic bin estimator".format(data_weights.dtype))
-        if data_weights.sum() < a.size:
-            # we assume that weights represents counts. In the case that weights
-            # represents a probability (i.e. weights.sum()<=1),
-            # we scale the weights to represent a count where weights.sum = a.size
-            data_weights = data_weights * (a.size/data_weights.sum())
+    if data_weights is not None and not (np.issubdtype(data_weights.dtype, int) or
+                                        (np.issubdtype(data_weights.dtype, float))):
+        raise TypeError("Unsupported weight type {} passed into "
+                        "histogram automatic bin estimator".format(data_weights.dtype))
+
+    def _get_datasize(x, weights):
+        """
+        We expect weights to either be a count or a probability.
+        If weights is a count the data size is given by weights.sum()
+            I.e. np.repeat(x, weights) will give full dataset for integer weights
+        If weights is a probability, weights.sum <= 1 (depending on range)
+            In this case using weights.sum() will not give the data size and
+            we should be using x.size instead
+        If we don't have weights, we simply return x.size
+        """
+        if weights is not None:
+            return max(weights.sum(), x.size)
+        else:
+            return x.size
 
     def sturges(x, weights=None):
         """
@@ -129,7 +139,7 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         Poor performance for non-normal data, especially obvious for large X.
         Depends only on size of the data.
         """
-        data_size = weights.sum() if weights is not None else x.size
+        data_size = _get_datasize(x, weights)
         return np.ceil(np.log2(data_size)) + 1
 
     def rice(x, weights=None):
@@ -140,7 +150,7 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         The number of bins is proportional to the cube root of data size (asymptotically optimal)
         Depends only on size of the data
         """
-        data_size = weights.sum() if weights is not None else x.size
+        data_size = _get_datasize(x, weights)
         return np.ceil(2 * data_size ** (1.0 / 3))
 
     def scott(x, weights=None):
@@ -148,16 +158,14 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         Scott Estimator
         The binwidth is proportional to the standard deviation of the data and
         inversely proportional to the cube root of data size (asymptotically optimal)
-
         """
         if weights is None:
             std = a.std()
-            data_size = x.size
         else:
             weighted_mean = np.average(a, weights=weights)
             std = np.sqrt(np.average((a-weighted_mean)**2, weights=weights))
-            data_size = weights.sum()
 
+        data_size = _get_datasize(x, weights)
         h = 3.5 * std * data_size ** (-1.0 / 3)
         if h > 0:
             return np.ceil(x.ptp() / h)
@@ -174,6 +182,7 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         Binwidth is inversely proportional to the cube root of data size (asymptotically optimal)
 
         Does not support weights - will throw an TypeError if weights is not None
+        `np.percentile` and `np.partition` do not support weights as arguments
         """
         if weights is not None:
             raise TypeError("Freedman Diaconis rule does not accept weights as an argument")
@@ -191,9 +200,15 @@ def _hist_optim_numbins_estimator(a, estimator, data_range=None, data_weights=No
         The FD estimator is usually the most robust method, but it tends to be too small
         for small X. The Sturges estimator is quite good for small (<1000) datasets and is
         the default in R.
+        However, the FD estimator is not implemented for weighted data, hence we choose between
+        the max of sturges and scott in this case
+
         This method gives good off the shelf behaviour.
         """
-        return max(scott(x, weights), sturges(x, weights)) if weights is not None else max(fd(x), sturges(x))
+        if weights is not None:
+            return max(scott(x, weights), sturges(x, weights))
+        else:
+            return max(fd(x), sturges(x))
 
     optimal_numbins_methods = {'sturges': sturges, 'rice': rice, 'scott': scott,
                                'fd': fd, 'auto': auto}
@@ -226,8 +241,8 @@ def histogram(a, bins=10, range=None, normed=False, weights=None,
         If `bins` is a string from the list below, `histogram` will use the method
         chosen to calculate the optimal number of bins (see Notes for more detail
         on the estimators). This option is compatible with `range` and `weights`,
-        given that weights represents either a count or a probability. For visualisation,
-        we suggest using the 'auto' option.
+        given that `weights` represents either a count or a probability.
+        For visualisation, we suggest using the 'auto' option.
 
         'auto'
             Maximum of the 'sturges' and 'fd' estimators. Uses 'scott' instead of 'fd'
