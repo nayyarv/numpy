@@ -430,6 +430,18 @@ class TestHistogramOptimBinNums(object):
             assert_equal(len(a), numbins, err_msg="{0} estimator, "
                          "No Variance test".format(estimator))
 
+    def test_limited_variance(self):
+        """
+        check in the situation that we have some variance and should return
+        the sturges value
+        """
+        lim_var_data = np.ones(1000)
+        lim_var_data[:3] = 0
+        lim_var_data[-4:] = 100
+
+        a, b = np.histogram(lim_var_data, 'auto')
+        assert_equal(len(a), 10)
+
     def test_outlier(self):
         """
         Check the FD, Scott and Doane with outliers.
